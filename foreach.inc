@@ -1781,12 +1781,12 @@ Notes:
 
 stock Iter_InitInternal(arr[][], s0, s1)
 {
-	for (new i = 0, t = s1 + 1; i < s0; ++i) {
-		for (new j = 0; j < s1; ++j) {
-			arr[i][j] = t;
-		}
-		arr[i][s1] = s1;
-	}
+    for (new i = 0, j = 0, k = s1 + 1; i < s0; ++i, j = 0, k = s1 + 1) {
+        while (j < s1) {
+            arr[i][j++] = k;
+        }
+        arr[i][j] = s1;
+    }
 }
 
 /*
