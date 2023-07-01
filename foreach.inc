@@ -686,21 +686,21 @@ Notes:
 --------------------------------------------------------------------------------
 */
 
-stock Iter_ScriptInit()
-{
-	#if defined GetPlayerPoolSize && !defined _INC_open_mp && !defined _inc_fixes
-		new
-			LAST_PLAYER_ID = GetPlayerPoolSize() + 1,
-			LAST_VEHICLE_ID = GetVehiclePoolSize() + 1,
-			LAST_ACTOR_ID = GetActorPoolSize() + 1;
-	#else
-		new
-			LAST_PLAYER_ID = MAX_PLAYERS,
-			LAST_VEHICLE_ID = MAX_VEHICLES,
-			LAST_ACTOR_ID = MAX_ACTORS;
-	#endif
+// function with timers to use less CPU on start up
+forward IterInit_Player(LAST_PLAYER_ID);
+forward IterInit_Vehicle(LAST_VEHICLE_ID);
+forward IterInit_Actor(LAST_ACTOR_ID);
+forward IterInit_PlayerPlayersStream(part, LAST_PLAYER_ID);
 
-	#if FOREACH_I_Player || FOREACH_I_Bot || FOREACH_I_Character
+forward IterInit_VehicleStream(part, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+forward IterInit_VehicleStream_vehicles(startid, endid);
+
+forward IterInit_StreamActorsAndPlayer(part, LAST_PLAYER_ID, LAST_ACTOR_ID);
+forward IterInit_PlayersInVehicle(part, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+
+
+
+public IterInit_Player(LAST_PLAYER_ID) {
 		#if FOREACH_I_Player
 			Iter_Clear(Player);
 		#endif
@@ -732,21 +732,19 @@ stock Iter_ScriptInit()
 				Iter_Add(Character, playerid);
 			#endif
 		}
-	#endif
+}
+public IterInit_Vehicle(LAST_VEHICLE_ID) {
+	Iter_Clear(Vehicle);
 
-	#if FOREACH_I_Vehicle
-		Iter_Clear(Vehicle);
-
-		for (new vehicleid = 1; vehicleid != LAST_VEHICLE_ID; ++vehicleid) {
-			if (!GetVehicleModel(vehicleid)) {
-				continue;
-			}
-
-			Iter_Add(Vehicle, vehicleid);
+	for (new vehicleid = 1; vehicleid != LAST_VEHICLE_ID; ++vehicleid) {
+		if (!GetVehicleModel(vehicleid)) {
+			continue;
 		}
-	#endif
 
-	#if FOREACH_I_Actor
+		Iter_Add(Vehicle, vehicleid);
+	}
+}
+public IterInit_Actor(LAST_ACTOR_ID) {
 		Iter_Clear(Actor);
 
 		for (new actorid = 0; actorid != LAST_ACTOR_ID; ++actorid) {
@@ -756,102 +754,265 @@ stock Iter_ScriptInit()
 
 			Iter_Add(Actor, actorid);
 		}
+}
+
+
+
+
+public IterInit_PlayerPlayersStream(part, LAST_PLAYER_ID) {
+    Iter_Init(PlayerPlayersStream);
+
+    new start, end;
+
+    if (part == 1) {
+        start = 0;
+        end = LAST_PLAYER_ID / 2;
+    } else if (part == 2) {
+        start = LAST_PLAYER_ID / 2;
+        end = LAST_PLAYER_ID;
+    } else if (part == 3) {
+        start = 0;
+        end = LAST_PLAYER_ID;
+    } else if (part == 4) {
+        start = LAST_PLAYER_ID / 4;
+        end = (LAST_PLAYER_ID / 4) * 3;
+    } else {
+        return; // parâmetro inválido, encerra a função
+    }
+
+    for (new playerid = start; playerid < end; ++playerid) {
+        if (!IsPlayerConnected(playerid)) {
+            continue;
+        }
+
+        for (new targetid = 0; targetid != LAST_PLAYER_ID; ++targetid) {
+            if (!IsPlayerStreamedIn(playerid, targetid)) {
+                continue;
+            }
+
+            Iter_Add(PlayerPlayersStream[playerid], targetid);
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+public IterInit_VehicleStream(part, LAST_PLAYER_ID, LAST_VEHICLE_ID) {
+    #if FOREACH_I_PlayerVehiclesStream
+        Iter_Init(PlayerVehiclesStream);
+    #endif
+
+    #if FOREACH_I_VehiclePlayersStream
+        Iter_Init(VehiclePlayersStream);
+    #endif
+
+    new startid, endid;
+
+    if (part == 1) {
+        startid = 0;
+        endid = LAST_PLAYER_ID / 4;
+    } else if (part == 2) {
+        startid = LAST_PLAYER_ID / 4;
+        endid = LAST_PLAYER_ID / 2;
+    } else if (part == 3) {
+        startid = LAST_PLAYER_ID / 2;
+        endid = (3 * LAST_PLAYER_ID) / 4;
+    } else if (part == 4) {
+        startid = (3 * LAST_PLAYER_ID) / 4;
+        endid = LAST_PLAYER_ID;
+    }
+
+    SetTimerEx("IterInit_VehicleStream_vehicles", part*25, false, "ii", startid, endid/2);
+    SetTimerEx("IterInit_VehicleStream_vehicles", part*50, false, "ii", startid/2, endid);
+}
+public IterInit_VehicleStream_vehicles(startid, endid) {
+    new vehicles[MAX_PLAYERS], num_vehicles = 0;
+
+    for (new playerid = startid; playerid != endid; ++playerid) {
+        if (!IsPlayerConnected(playerid)) {
+            continue;
+        }
+
+        for (new i = 0; i < num_vehicles; ++i) {
+            new vehicleid = vehicles[i];
+
+            #if FOREACH_I_VehiclePlayersStream
+                Iter_Add(VehiclePlayersStream[vehicleid], playerid);
+            #endif
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+public IterInit_StreamActorsAndPlayer(part, LAST_PLAYER_ID, LAST_ACTOR_ID) {
+    #if FOREACH_I_PlayerActorsStream
+        Iter_Init(PlayerActorsStream);
+    #endif
+
+    #if FOREACH_I_ActorPlayersStream
+        Iter_Init(ActorPlayersStream);
+    #endif
+
+    new start_playerid, end_playerid;
+    if(part == 1) {
+        start_playerid = 0;
+        end_playerid = (LAST_PLAYER_ID / 4);
+    }
+    else if(part == 2) {
+        start_playerid = (LAST_PLAYER_ID / 4);
+        end_playerid = (LAST_PLAYER_ID / 2);
+    }
+    else if(part == 3) {
+        start_playerid = (LAST_PLAYER_ID / 2);
+        end_playerid = (3 * LAST_PLAYER_ID / 4);
+    }
+    else if(part == 4) {
+        start_playerid = (3 * LAST_PLAYER_ID / 4);
+        end_playerid = LAST_PLAYER_ID;
+    }
+    else {
+        return;
+    }
+
+    for (new playerid = start_playerid; playerid != end_playerid; ++playerid) 
+		{
+        if (!IsPlayerConnected(playerid)) {
+            continue;
+        }
+
+        for (new actorid = 0; actorid != LAST_ACTOR_ID; ++actorid) {
+            if (!IsActorStreamedIn(actorid, playerid)) {
+                continue;
+            }
+
+            #if FOREACH_I_PlayerActorsStream
+                Iter_Add(PlayerActorsStream[playerid], actorid);
+            #endif
+
+            #if FOREACH_I_ActorPlayersStream
+                Iter_Add(ActorPlayersStream[actorid], playerid);
+            #endif
+        }
+    }
+}
+
+
+
+
+
+public IterInit_PlayersInVehicle(part, LAST_PLAYER_ID, LAST_VEHICLE_ID) {
+	Iter_Init(PlayerInVehicle);
+
+	new start_playerid, end_playerid, start_vehicleid, end_vehicleid;
+
+	if (part == 1) {
+		start_playerid = 0;
+		end_playerid = LAST_PLAYER_ID / 4;
+		start_vehicleid = 1;
+		end_vehicleid = LAST_VEHICLE_ID / 4;
+	} else if (part == 2) {
+		start_playerid = LAST_PLAYER_ID / 4;
+		end_playerid = LAST_PLAYER_ID / 2;
+		start_vehicleid = LAST_VEHICLE_ID / 4 + 1;
+		end_vehicleid = LAST_VEHICLE_ID / 2;
+	} else if (part == 3) {
+		start_playerid = LAST_PLAYER_ID / 2;
+		end_playerid = LAST_PLAYER_ID * 3 / 4;
+		start_vehicleid = LAST_VEHICLE_ID / 2 + 1;
+		end_vehicleid = LAST_VEHICLE_ID * 3 / 4;
+	} else if (part == 4) {
+		start_playerid = LAST_PLAYER_ID * 3 / 4;
+		end_playerid = LAST_PLAYER_ID;
+		start_vehicleid = LAST_VEHICLE_ID * 3 / 4 + 1;
+		end_vehicleid = LAST_VEHICLE_ID;
+	} else {
+		return;
+	}
+
+	for (new playerid = start_playerid; playerid < end_playerid; ++playerid) {
+		if (!IsPlayerConnected(playerid)) {
+			continue;
+		}
+
+		for (new vehicleid = start_vehicleid; vehicleid < end_vehicleid; ++vehicleid) {
+			if (!IsPlayerInVehicle(playerid, vehicleid)) {
+				continue;
+			}
+
+			Iter_Add(PlayerInVehicle[vehicleid], playerid);
+		}
+	}
+}
+
+
+stock Iter_ScriptInit()
+{
+	#if defined GetPlayerPoolSize && !defined _INC_open_mp && !defined _inc_fixes
+		new
+			LAST_PLAYER_ID = GetPlayerPoolSize() + 1,
+			LAST_VEHICLE_ID = GetVehiclePoolSize() + 1,
+			LAST_ACTOR_ID = GetActorPoolSize() + 1;
+	#else
+		new
+			LAST_PLAYER_ID = MAX_PLAYERS,
+			LAST_VEHICLE_ID = MAX_VEHICLES,
+			LAST_ACTOR_ID = MAX_ACTORS;
 	#endif
 
+	#if FOREACH_I_Player || FOREACH_I_Bot || FOREACH_I_Character
+		SetTimerEx("IterInit_Player", 50, false, "i", LAST_PLAYER_ID);
+	#endif
+	#if FOREACH_I_Vehicle
+		SetTimerEx("IterInit_Vehicle", 100, false, "i", LAST_VEHICLE_ID);
+	#endif
+	#if FOREACH_I_ActorPlayersStream
+		SetTimerEx("IterInit_Actor", 150, false, "i", LAST_ACTOR_ID);
+	#endif
 	#if FOREACH_I_PlayerPlayersStream
-		Iter_Init(PlayerPlayersStream);
-
-		for (new playerid = 0; playerid != LAST_PLAYER_ID; ++playerid) {
-			if (!IsPlayerConnected(playerid)) {
-				continue;
-			}
-
-			for (new targetid = 0; targetid != LAST_PLAYER_ID; ++targetid) {
-				if (!IsPlayerStreamedIn(playerid, targetid)) {
-					continue;
-				}
-
-				Iter_Add(PlayerPlayersStream[playerid], targetid);
-			}
-		}
+		SetTimerEx("IterInit_PlayerPlayersStream", 200, false, "ii", 1, LAST_PLAYER_ID);
+		SetTimerEx("IterInit_PlayerPlayersStream", 225, false, "ii", 2, LAST_PLAYER_ID);
+		SetTimerEx("IterInit_PlayerPlayersStream", 250, false, "ii", 3, LAST_PLAYER_ID);
+		SetTimerEx("IterInit_PlayerPlayersStream", 275, false, "ii", 4, LAST_PLAYER_ID);
 	#endif
-
 	#if FOREACH_I_PlayerVehiclesStream || FOREACH_I_VehiclePlayersStream
-		#if FOREACH_I_PlayerVehiclesStream
-			Iter_Init(PlayerVehiclesStream);
-		#endif
-
-		#if FOREACH_I_VehiclePlayersStream
-			Iter_Init(VehiclePlayersStream);
-		#endif
-
-		for (new playerid = 0; playerid != LAST_PLAYER_ID; ++playerid) {
-			if (!IsPlayerConnected(playerid)) {
-				continue;
-			}
-
-			for (new vehicleid = 1; vehicleid != LAST_VEHICLE_ID; ++vehicleid) {
-				if (!IsVehicleStreamedIn(vehicleid, playerid)) {
-					continue;
-				}
-
-				#if FOREACH_I_PlayerVehiclesStream
-					Iter_Add(PlayerVehiclesStream[playerid], vehicleid);
-				#endif
-
-				#if FOREACH_I_VehiclePlayersStream
-					Iter_Add(VehiclePlayersStream[vehicleid], playerid);
-				#endif
-			}
-		}
+		SetTimerEx("IterInit_VehicleStream", 300, false, "iii", 1, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+		SetTimerEx("IterInit_VehicleStream", 325, false, "iii", 2, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+		SetTimerEx("IterInit_VehicleStream", 350, false, "iii", 3, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+		SetTimerEx("IterInit_VehicleStream", 375, false, "iii", 4, LAST_PLAYER_ID, LAST_VEHICLE_ID);
 	#endif
-
 	#if FOREACH_I_PlayerActorsStream || FOREACH_I_ActorPlayersStream
-		#if FOREACH_I_PlayerActorsStream
-			Iter_Init(PlayerActorsStream);
-		#endif
-
-		#if FOREACH_I_ActorPlayersStream
-			Iter_Init(ActorPlayersStream);
-		#endif
-
-		for (new playerid = 0; playerid != LAST_PLAYER_ID; ++playerid) {
-			if (!IsPlayerConnected(playerid)) {
-				continue;
-			}
-
-			for (new actorid = 0; actorid != LAST_ACTOR_ID; ++actorid) {
-				if (!IsActorStreamedIn(actorid, playerid)) {
-					continue;
-				}
-
-				#if FOREACH_I_PlayerActorsStream
-					Iter_Add(PlayerActorsStream[playerid], actorid);
-				#endif
-
-				#if FOREACH_I_ActorPlayersStream
-					Iter_Add(ActorPlayersStream[actorid], playerid);
-				#endif
-			}
-		}
+		SetTimerEx("IterInit_StreamActorsAndPlayer", 400, false, "iii", 1, LAST_PLAYER_ID, LAST_ACTOR_ID);
+		SetTimerEx("IterInit_StreamActorsAndPlayer", 425, false, "iii", 2, LAST_PLAYER_ID, LAST_ACTOR_ID);
+		SetTimerEx("IterInit_StreamActorsAndPlayer", 450, false, "iii", 3, LAST_PLAYER_ID, LAST_ACTOR_ID);
+		SetTimerEx("IterInit_StreamActorsAndPlayer", 475, false, "iii", 4, LAST_PLAYER_ID, LAST_ACTOR_ID);
 	#endif
-	
 	#if FOREACH_I_PlayerInVehicle
-		Iter_Init(PlayerInVehicle);
-
-		for (new playerid = 0; playerid != LAST_PLAYER_ID; ++playerid) {
-			if (!IsPlayerConnected(playerid)) {
-				continue;
-			}
-
-			for (new vehicleid = 1; vehicleid != LAST_VEHICLE_ID; ++vehicleid) {
-				if (!IsPlayerInVehicle(playerid, vehicleid)) {
-					continue;
-				}
-
-				Iter_Add(PlayerInVehicle[vehicleid], playerid);
-			}
-		}
+		SetTimerEx("IterInit_PlayersInVehicle", 500, false, "iii", 1, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+		SetTimerEx("IterInit_PlayersInVehicle", 525, false, "iii", 2, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+		SetTimerEx("IterInit_PlayersInVehicle", 550, false, "iii", 3, LAST_PLAYER_ID, LAST_VEHICLE_ID);
+		SetTimerEx("IterInit_PlayersInVehicle", 575, false, "iii", 4, LAST_PLAYER_ID, LAST_VEHICLE_ID);
 	#endif
 
 	#pragma unused LAST_PLAYER_ID, LAST_VEHICLE_ID, LAST_ACTOR_ID
