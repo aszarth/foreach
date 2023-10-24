@@ -1658,6 +1658,8 @@ stock Iter_ScriptInit()
 
 	public OnPlayerStateChange(playerid, newstate, oldstate)
 	{
+		if(playerid == INVALID_PLAYER_ID) return 1;
+
 		if (newstate == PLAYER_STATE_DRIVER || newstate == PLAYER_STATE_PASSENGER) {
 			Iter_gPlayerVehicleId[playerid] = GetPlayerVehicleID(playerid);
 			Iter_Add(PlayerInVehicle[Iter_gPlayerVehicleId[playerid]], playerid);
